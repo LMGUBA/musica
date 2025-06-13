@@ -7,9 +7,6 @@ import concurrent.futures
 import threading
 from functools import lru_cache
 import time
-import random
-import requests
-from fake_useragent import UserAgent
 
 app = Flask(__name__)
 
@@ -20,38 +17,6 @@ ssl._create_default_https_context = ssl._create_unverified_context
 search_cache = {}
 cache_lock = threading.Lock()
 CACHE_EXPIRY = 300  # 5 minutos
-
-# Lista de User Agents rotativos
-ua = UserAgent()
-
-# Lista de proxies (opcional - puedes agregar proxies gratuitos)
-PROXY_LIST = [
-    # Agrega proxies aquí si los tienes
-    # 'http://proxy1:port',
-    # 'http://proxy2:port',
-]
-
-def get_random_headers():
-    """Generar headers aleatorios para evitar detección"""
-    return {
-        'User-Agent': ua.random,
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Accept-Encoding': 'gzip, deflate',
-        'DNT': '1',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Cache-Control': 'max-age=0'
-    }
-
-def get_random_proxy():
-    """Obtener proxy aleatorio si está disponible"""
-    if PROXY_LIST:
-        return random.choice(PROXY_LIST)
-    return None
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -91,10 +56,6 @@ def get_audio_url():
             return jsonify({"error": "URL no proporcionada"}), 400
         
         print(f"Obteniendo audio para: {video_url}")
-        
-        # Añadir delay aleatorio para parecer más humano
-        time.sleep(random.uniform(0.5, 2.0))
-        
         audio_url = get_direct_audio_url_optimized(video_url)
         
         if audio_url:
@@ -140,11 +101,14 @@ def save_to_cache(search_term, results):
 
 def generate_search_variations_optimized(search_term):
     """Generar variaciones de búsqueda optimizadas"""
+    # Reducir número de variaciones para mayor velocidad
     variations = [search_term]
     
-    if len(search_term) > 3:
+    # Solo agregar variaciones más efectivas
+    if len(search_term) > 3:  # Evitar variaciones para términos muy cortos
         variations.append(f"{search_term} oficial")
         
+        # Variaciones específicas solo para artistas conocidos
         search_lower = search_term.lower()
         known_artists = {
             'kudai': 'kudai sin despertar',
@@ -157,64 +121,29 @@ def generate_search_variations_optimized(search_term):
         for artist, variation in known_artists.items():
             if artist in search_lower:
                 variations.append(variation)
-                break
+                break  # Solo una variación por artista
     
-    return variations[:3]
+    return variations[:3]  # Limitar a máximo 3 variaciones
 
 def search_single_variation(variation, results_per_variation=10):
-    """Buscar una sola variación con anti-detección mejorada"""
+    """Buscar una sola variación de forma optimizada"""
     search_query = f"ytsearch{results_per_variation}:{variation}"
     
-    # Headers y configuración anti-detección
-    random_headers = get_random_headers()
-    proxy = get_random_proxy()
-    
-    # Configuración optimizada para evitar detección (yt-dlp 2025.6.9)
+    # Configuración optimizada para velocidad
     ydl_opts = {
         'quiet': True,
         'noplaylist': True,
         'nocheckcertificate': True,
         'prefer_insecure': True,
-        'extract_flat': True,
+        'extract_flat': True,  # Extracción plana para mayor velocidad
         'no_warnings': True,
-        'socket_timeout': 25,  # Timeout más generoso
-        'http_headers': random_headers,
-        'sleep_interval': random.uniform(1, 3),  # Delay aleatorio entre requests
-        'max_sleep_interval': 5,
-        'sleep_interval_subtitles': random.uniform(1, 3),
-        'extractor_retries': 3,
-        'fragment_retries': 3,
-        'skip_unavailable_fragments': True,
-        'keep_fragments': False,
-        'buffersize': 1024,
-        'http_chunk_size': 1024,
-        # Configuración adicional para evitar detección
-        'geo_bypass': True,
-        'geo_bypass_country': 'US',
-        'age_limit': None,
-        'skip_download': True,
-        # Nuevas opciones para yt-dlp 2025.6.9
-        'no_check_certificates': True,
-        'ignore_no_formats_error': True,
-        'ignore_errors': True,
-        'cookiefile': None,  # No usar cookies
-        'no_cookies': True,  # Explícitamente no usar cookies
-        'extractor_args': {
-            'youtube': {
-                'skip': ['hls', 'dash'],  # Evitar formatos complejos
-                'player_skip': ['configs'],
-            }
-        },
+        'socket_timeout': 10,  # Timeout reducido
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
     }
     
-    # Agregar proxy si está disponible
-    if proxy:
-        ydl_opts['proxy'] = proxy
-    
     try:
-        # Delay aleatorio antes de cada búsqueda
-        time.sleep(random.uniform(0.5, 2.0))
-        
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(search_query, download=False)
             
@@ -222,6 +151,7 @@ def search_single_variation(variation, results_per_variation=10):
             if 'entries' in info and info['entries']:
                 for entry in info['entries'][:results_per_variation]:
                     if entry and entry.get('title') and entry.get('url'):
+                        # Obtener información adicional solo si es necesario
                         result_data = {
                             'title': clean_string(entry.get('title', 'Título desconocido')),
                             'uploader': clean_string(entry.get('uploader', entry.get('channel', 'Canal desconocido'))),
@@ -238,40 +168,10 @@ def search_single_variation(variation, results_per_variation=10):
             
     except Exception as e:
         print(f"Error en variación '{variation}': {str(e)}")
-        # Si hay error, intentar con configuración más conservadora
-        try:
-            time.sleep(random.uniform(2, 5))  # Mayor delay en caso de error
-            fallback_opts = {
-                'quiet': True,
-                'noplaylist': True,
-                'extract_flat': True,
-                'http_headers': get_random_headers(),
-                'socket_timeout': 30,
-            }
-            
-            with yt_dlp.YoutubeDL(fallback_opts) as ydl:
-                info = ydl.extract_info(search_query, download=False)
-                results = []
-                if 'entries' in info and info['entries']:
-                    for entry in info['entries'][:results_per_variation]:
-                        if entry and entry.get('title') and entry.get('url'):
-                            result_data = {
-                                'title': clean_string(entry.get('title', 'Título desconocido')),
-                                'uploader': clean_string(entry.get('uploader', entry.get('channel', 'Canal desconocido'))),
-                                'duration': format_duration(entry.get('duration', 0)),
-                                'view_count': format_views(entry.get('view_count', 0)),
-                                'url': entry.get('url', ''),
-                                'thumbnail': get_best_thumbnail(entry.get('thumbnails', [])),
-                                'id': entry.get('id', ''),
-                                'upload_date': entry.get('upload_date', '')
-                            }
-                            results.append(result_data)
-                return results
-        except:
-            return []
+        return []
 
 def search_songs_optimized(search_term, max_results=15):
-    """Búsqueda optimizada con cache y anti-detección"""
+    """Búsqueda optimizada con cache y concurrencia"""
     
     # Verificar cache primero
     cached_results = get_from_cache(search_term)
@@ -284,25 +184,25 @@ def search_songs_optimized(search_term, max_results=15):
     search_variations = generate_search_variations_optimized(search_term)
     all_results = []
     
-    # Reducir concurrencia para evitar detección
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+    # Usar ThreadPoolExecutor para búsquedas concurrentes
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        # Enviar todas las búsquedas en paralelo
         future_to_variation = {
             executor.submit(search_single_variation, variation, max_results // len(search_variations) + 3): variation 
             for variation in search_variations
         }
         
-        for future in concurrent.futures.as_completed(future_to_variation, timeout=30):
+        # Recopilar resultados conforme van completándose
+        for future in concurrent.futures.as_completed(future_to_variation, timeout=15):
             variation = future_to_variation[future]
             try:
                 results = future.result()
                 all_results.extend(results)
                 print(f"Completada búsqueda para: {variation} ({len(results)} resultados)")
-                # Delay entre búsquedas completadas
-                time.sleep(random.uniform(1, 3))
             except Exception as e:
                 print(f"Error en búsqueda paralela para '{variation}': {e}")
     
-    # Eliminar duplicados
+    # Eliminar duplicados de forma eficiente
     unique_results = []
     seen_ids = set()
     
@@ -324,14 +224,16 @@ def search_songs_optimized(search_term, max_results=15):
     return unique_results
 
 def get_best_thumbnail(thumbnails):
-    """Obtener la mejor thumbnail disponible"""
+    """Obtener la mejor thumbnail disponible de forma eficiente"""
     if not thumbnails:
         return ""
     
+    # Priorizar thumbnails de calidad media para balance entre calidad y velocidad
     for thumb in thumbnails:
         if thumb.get('url') and 'mqdefault' in thumb.get('url', ''):
             return thumb['url']
     
+    # Fallback a la primera disponible
     for thumb in thumbnails:
         if thumb.get('url'):
             return thumb['url']
@@ -339,7 +241,7 @@ def get_best_thumbnail(thumbnails):
     return ""
 
 def format_duration(duration):
-    """Formatear duración"""
+    """Formatear duración de forma eficiente"""
     if not duration or duration == 0:
         return "Desconocido"
     
@@ -350,13 +252,13 @@ def format_duration(duration):
         return "Desconocido"
 
 def clean_string(text):
-    """Limpiar strings"""
+    """Limpiar strings de forma optimizada"""
     if not text:
         return ""
     return str(text).replace("'", "&#39;").replace('"', "&quot;")
 
 def format_views(views):
-    """Formatear número de visualizaciones"""
+    """Formatear número de visualizaciones de forma optimizada"""
     if not views:
         return "0"
     
@@ -373,61 +275,31 @@ def format_views(views):
 
 @lru_cache(maxsize=50)
 def get_direct_audio_url_optimized(video_url):
-    """Obtener URL directo del audio con anti-detección mejorada"""
-    
-    # Configuración anti-detección para extracción de audio
-    random_headers = get_random_headers()
-    proxy = get_random_proxy()
-    
+    """Obtener URL directo del audio con cache LRU"""
     ydl_opts = {
-        'format': 'bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best[height<=480]',
+        'format': 'bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio',
         'quiet': True,
         'noplaylist': True,
         'nocheckcertificate': True,
         'prefer_insecure': True,
         'no_warnings': True,
-        'socket_timeout': 30,
-        'http_headers': random_headers,
-        'sleep_interval': random.uniform(1, 2),
-        'max_sleep_interval': 3,
-        'extractor_retries': 2,
-        'fragment_retries': 2,
-        'geo_bypass': True,
-        'geo_bypass_country': 'US',
-        'age_limit': None,
-        # Configuración específica para yt-dlp 2025.6.9
-        'no_check_certificates': True,
-        'ignore_no_formats_error': True,
-        'ignore_errors': False,  # Queremos saber si hay errores aquí
-        'cookiefile': None,
-        'no_cookies': True,
-        'extractor_args': {
-            'youtube': {
-                'skip': ['hls'],  # Evitar HLS si da problemas
-                'player_skip': ['configs'],
-                'innertube_host': 'www.youtube.com',
-                'innertube_context_client_name': '1',
-                'innertube_context_client_version': '2.20210728.00.00',
-            }
-        },
+        'socket_timeout': 15,
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
     }
-    
-    if proxy:
-        ydl_opts['proxy'] = proxy
 
     try:
-        # Delay aleatorio antes de extraer
-        time.sleep(random.uniform(1, 3))
-        
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(video_url, download=False)
             
             if not info or not info.get('formats'):
                 return None
             
+            # Buscar formato óptimo más rápido
             formats = info.get('formats', [])
             
-            # Buscar formato óptimo
+            # Priorizar formatos conocidos por compatibilidad
             for fmt in formats:
                 if (fmt.get('acodec') and fmt.get('acodec') != 'none' and 
                     fmt.get('url') and
@@ -440,22 +312,6 @@ def get_direct_audio_url_optimized(video_url):
             
     except Exception as e:
         print(f"Error obteniendo URL de audio: {e}")
-        # Intentar con configuración más básica
-        try:
-            time.sleep(random.uniform(2, 4))
-            basic_opts = {
-                'format': 'best[height<=360]/best',
-                'quiet': True,
-                'http_headers': get_random_headers(),
-            }
-            
-            with yt_dlp.YoutubeDL(basic_opts) as ydl:
-                info = ydl.extract_info(video_url, download=False)
-                if info and info.get('url'):
-                    return info.get('url')
-        except:
-            pass
-        
         return None
 
 # Manejo de errores global
@@ -468,13 +324,11 @@ def internal_error(error):
     return render_template('index.html', error="Error interno del servidor"), 500
 
 if __name__ == "__main__":
-    print("Iniciando servidor Flask con anti-detección...")
+    print("Iniciando servidor Flask optimizado...")
     print("Accede a: http://localhost:8080")
-    print("Características anti-detección:")
-    print("- User Agents aleatorios")
-    print("- Headers rotativos")
-    print("- Delays aleatorios")
-    print("- Reintentos con fallback")
-    print("- Geo-bypass activado")
-    print("- Configuración conservadora para evitar detección")
+    print("Optimizaciones activadas:")
+    print("- Cache de búsquedas (5 min)")
+    print("- Búsquedas concurrentes")
+    print("- Extracción plana para mayor velocidad")
+    print("- Timeouts optimizados")
     app.run(debug=True, host='0.0.0.0', port=8080, threaded=True)
