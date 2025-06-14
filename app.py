@@ -8,6 +8,8 @@ import threading
 from functools import lru_cache
 import time
 import random
+import requests
+from fake_useragent import UserAgent
 
 app = Flask(__name__)
 
@@ -19,14 +21,37 @@ search_cache = {}
 cache_lock = threading.Lock()
 CACHE_EXPIRY = 300  # 5 minutos
 
-# Lista de User Agents rotativos para evitar bloqueos
-USER_AGENTS = [
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/119.0'
+# Lista de User Agents rotativos
+ua = UserAgent()
+
+# Lista de proxies (opcional - puedes agregar proxies gratuitos)
+PROXY_LIST = [
+    # Agrega proxies aquí si los tienes
+    # 'http://proxy1:port',
+    # 'http://proxy2:port',
 ]
+
+def get_random_headers():
+    """Generar headers aleatorios para evitar detección"""
+    return {
+        'User-Agent': ua.random,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate',
+        'DNT': '1',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Cache-Control': 'max-age=0'
+    }
+
+def get_random_proxy():
+    """Obtener proxy aleatorio si está disponible"""
+    if PROXY_LIST:
+        return random.choice(PROXY_LIST)
+    return None
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -67,10 +92,9 @@ def get_audio_url():
         
         print(f"Obteniendo audio para: {video_url}")
         
-        # Intentar con múltiples métodos
-        audio_url = None
+        # Añadir delay aleatorio para parecer más humano
+        time.sleep(random.uniform(0.5, 2.0))
         
-        # Método 1: Configuración optimizada
         audio_url = get_direct_audio_url_optimized(video_url)
         
         # Método 2: Si falla, intentar con configuración alternativa
@@ -172,13 +196,44 @@ def search_single_variation(variation, results_per_variation=10):
         'prefer_insecure': True,
         'extract_flat': True,  # Extracción plana para mayor velocidad
         'no_warnings': True,
-        'socket_timeout': 10,  # Timeout reducido
-        'http_headers': {
-            'User-Agent': get_random_user_agent()
-        }
+        'socket_timeout': 25,  # Timeout más generoso
+        'http_headers': random_headers,
+        'sleep_interval': random.uniform(1, 3),  # Delay aleatorio entre requests
+        'max_sleep_interval': 5,
+        'sleep_interval_subtitles': random.uniform(1, 3),
+        'extractor_retries': 3,
+        'fragment_retries': 3,
+        'skip_unavailable_fragments': True,
+        'keep_fragments': False,
+        'buffersize': 1024,
+        'http_chunk_size': 1024,
+        # Configuración adicional para evitar detección
+        'geo_bypass': True,
+        'geo_bypass_country': 'US',
+        'age_limit': None,
+        'skip_download': True,
+        # Nuevas opciones para yt-dlp 2025.6.9
+        'no_check_certificates': True,
+        'ignore_no_formats_error': True,
+        'ignore_errors': True,
+        'cookiefile': None,  # No usar cookies
+        'no_cookies': True,  # Explícitamente no usar cookies
+        'extractor_args': {
+            'youtube': {
+                'skip': ['hls', 'dash'],  # Evitar formatos complejos
+                'player_skip': ['configs'],
+            }
+        },
     }
     
+    # Agregar proxy si está disponible
+    if proxy:
+        ydl_opts['proxy'] = proxy
+    
     try:
+        # Delay aleatorio antes de cada búsqueda
+        time.sleep(random.uniform(0.5, 2.0))
+        
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(search_query, download=False)
             
@@ -310,35 +365,62 @@ def format_views(views):
 
 @lru_cache(maxsize=50)
 def get_direct_audio_url_optimized(video_url):
-    """Obtener URL directo del audio con configuración optimizada"""
+    """Obtener URL directo del audio con anti-detección mejorada"""
+    
+    # Configuración anti-detección para extracción de audio
+    random_headers = get_random_headers()
+    proxy = get_random_proxy()
+    
     ydl_opts = {
-        'format': 'bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio[acodec!=none]/best[height<=480]',
+        'format': 'bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best[height<=480]',
         'quiet': True,
         'noplaylist': True,
         'nocheckcertificate': True,
         'prefer_insecure': True,
         'no_warnings': True,
-        'socket_timeout': 20,
-        'http_headers': {
-            'User-Agent': get_random_user_agent()
-        },
+        'socket_timeout': 30,
+        'http_headers': random_headers,
+        'sleep_interval': random.uniform(1, 2),
+        'max_sleep_interval': 3,
+        'extractor_retries': 2,
+        'fragment_retries': 2,
+        'geo_bypass': True,
+        'geo_bypass_country': 'US',
+        'age_limit': None,
+        # Configuración específica para yt-dlp 2025.6.9
+        'no_check_certificates': True,
+        'ignore_no_formats_error': True,
+        'ignore_errors': False,  # Queremos saber si hay errores aquí
+        'cookiefile': None,
+        'no_cookies': True,
         'extractor_args': {
             'youtube': {
-                'skip': ['dash', 'hls']
+                'skip': ['hls'],  # Evitar HLS si da problemas
+                'player_skip': ['configs'],
+                'innertube_host': 'www.youtube.com',
+                'innertube_context_client_name': '1',
+                'innertube_context_client_version': '2.20210728.00.00',
             }
-        }
+        },
     }
+    
+    if proxy:
+        ydl_opts['proxy'] = proxy
 
     try:
+        # Delay aleatorio antes de extraer
+        time.sleep(random.uniform(1, 3))
+        
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(video_url, download=False)
             
             if not info or not info.get('formats'):
                 return None
             
+            # Buscar formato óptimo más rápido
             formats = info.get('formats', [])
             
-            # Buscar formato óptimo con mejores filtros
+            # Buscar formato óptimo
             for fmt in formats:
                 if (fmt.get('acodec') and fmt.get('acodec') != 'none' and 
                     fmt.get('url') and
@@ -351,84 +433,23 @@ def get_direct_audio_url_optimized(video_url):
             return None
             
     except Exception as e:
-        print(f"Error método optimizado: {e}")
-        return None
-
-def get_audio_url_fallback(video_url):
-    """Método alternativo para obtener URL de audio"""
-    ydl_opts = {
-        'format': 'worst[acodec!=none]/worstaudio',
-        'quiet': True,
-        'noplaylist': True,
-        'nocheckcertificate': True,
-        'prefer_insecure': True,
-        'no_warnings': True,
-        'socket_timeout': 25,
-        'http_headers': {
-            'User-Agent': get_random_user_agent()
-        }
-    }
-
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(video_url, download=False)
+        print(f"Error obteniendo URL de audio: {e}")
+        # Intentar con configuración más básica
+        try:
+            time.sleep(random.uniform(2, 4))
+            basic_opts = {
+                'format': 'best[height<=360]/best',
+                'quiet': True,
+                'http_headers': get_random_headers(),
+            }
             
-            if not info or not info.get('formats'):
-                return None
-            
-            formats = info.get('formats', [])
-            
-            # Buscar cualquier formato de audio válido
-            for fmt in formats:
-                if (fmt.get('url') and 
-                    (fmt.get('acodec', 'none') != 'none' or fmt.get('vcodec', 'none') != 'none')):
-                    return fmt.get('url')
-            
-            return None
-            
-    except Exception as e:
-        print(f"Error método fallback: {e}")
-        return None
-
-def get_audio_url_permissive(video_url):
-    """Método más permisivo para obtener URL de audio"""
-    ydl_opts = {
-        'format': 'best',
-        'quiet': True,
-        'noplaylist': True,
-        'nocheckcertificate': True,
-        'prefer_insecure': True,
-        'no_warnings': True,
-        'socket_timeout': 30,
-        'http_headers': {
-            'User-Agent': get_random_user_agent()
-        },
-        'extract_flat': False
-    }
-
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(video_url, download=False)
-            
-            if not info:
-                return None
-            
-            # Si hay URL directa en el info principal
-            if info.get('url'):
-                return info.get('url')
-            
-            # Buscar en formatos
-            formats = info.get('formats', [])
-            if formats:
-                # Tomar cualquier formato disponible
-                for fmt in formats:
-                    if fmt.get('url'):
-                        return fmt.get('url')
-            
-            return None
-            
-    except Exception as e:
-        print(f"Error método permisivo: {e}")
+            with yt_dlp.YoutubeDL(basic_opts) as ydl:
+                info = ydl.extract_info(video_url, download=False)
+                if info and info.get('url'):
+                    return info.get('url')
+        except:
+            pass
+        
         return None
 
 # Manejo de errores global
@@ -441,12 +462,13 @@ def internal_error(error):
     return render_template('index.html', error="Error interno del servidor"), 500
 
 if __name__ == "__main__":
-    print("Iniciando servidor Flask mejorado...")
+    print("Iniciando servidor Flask con anti-detección...")
     print("Accede a: http://localhost:8080")
-    print("Mejoras implementadas:")
-    print("- Múltiples métodos de extracción de audio")
-    print("- User Agents rotativos")
-    print("- Mejor manejo de errores")
-    print("- Filtros de tamaño de archivo")
-    print("- Timeouts escalonados")
+    print("Características anti-detección:")
+    print("- User Agents aleatorios")
+    print("- Headers rotativos")
+    print("- Delays aleatorios")
+    print("- Reintentos con fallback")
+    print("- Geo-bypass activado")
+    print("- Configuración conservadora para evitar detección")
     app.run(debug=True, host='0.0.0.0', port=8080, threaded=True)
