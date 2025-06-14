@@ -350,10 +350,12 @@ def index():
 
 @app.route("/get_audio_url", methods=["POST"])
 def get_audio_url():
-    """Obtener URL de audio directo con máximo sigilo"""
+    """Obtener URL de audio directo con máximo sigilo y múltiples respaldos"""
+    start_time = time.time()
+    
     try:
         # Actividad Spotify intensiva durante descarga
-        if random.random() < 0.7:  # 70% probabilidad
+        if random.random() < 0.8:  # 80% probabilidad
             threading.Thread(
                 target=spotify_system.simulate_user_behavior,
                 daemon=True
@@ -367,28 +369,162 @@ def get_audio_url():
         if not video_url:
             return jsonify({"error": "URL no proporcionada"}), 400
         
-        # Aplicar delay anti-detección
+        print(f"🎯 Iniciando extracción de audio para: {video_url}")
+        
+        # Aplicar delay anti-detección inicial
         stealth_system.apply_request_delay()
         
-        # Actividad Spotify adicional
-        threading.Thread(
-            target=spotify_system.get_playlist_tracks,
-            daemon=True
-        ).start()
+        # Actividad Spotify paralela intensiva
+        for _ in range(2):  # Múltiples threads de Spotify
+            threading.Thread(
+                target=spotify_system.simulate_user_behavior,
+                daemon=True
+            ).start()
         
-        print(f"Obteniendo audio con sigilo para: {video_url}")
+        # Intentar extracción con múltiples métodos
+        audio_url = None
+        
+        # Método 1: Extracción estándar mejorada
+        print("🔄 Método 1: Extracción estándar...")
         audio_url = get_direct_audio_url_stealth(video_url)
         
+        # Método 2: Extracción de respaldo si falló el primero
+        if not audio_url:
+            print("🔄 Método 2: Extracción alternativa...")
+            time.sleep(random.uniform(1, 3))
+            
+            # Más actividad Spotify
+            threading.Thread(
+                target=spotify_system.make_realistic_spotify_search,
+                daemon=True
+            ).start()
+            
+            audio_url = get_fallback_audio_url(video_url)
+        
+        # Método 3: Último recurso con configuración mínima
+        if not audio_url:
+            print("🔄 Método 3: Extracción de emergencia...")
+            time.sleep(random.uniform(2, 4))
+            audio_url = get_emergency_audio_url(video_url)
+        
+        elapsed_time = time.time() - start_time
+        
         if audio_url:
-            print(f"URL de audio obtenida exitosamente con sigilo")
-            return jsonify({"success": True, "audio_url": audio_url})
+            print(f"✅ URL de audio obtenida exitosamente en {elapsed_time:.2f}s")
+            
+            # Actividad Spotify de celebración
+            threading.Thread(
+                target=spotify_system.get_playlist_tracks,
+                daemon=True
+            ).start()
+            
+            return jsonify({
+                "success": True, 
+                "audio_url": audio_url,
+                "extraction_time": round(elapsed_time, 2)
+            })
         else:
-            print("No se pudo obtener URL de audio")
-            return jsonify({"error": "No se pudo obtener URL de audio válida"}), 500
+            print(f"❌ No se pudo obtener URL de audio después de {elapsed_time:.2f}s")
+            return jsonify({
+                "error": "No se pudo obtener URL de audio válida después de múltiples intentos",
+                "extraction_time": round(elapsed_time, 2)
+            }), 500
             
     except Exception as e:
-        print(f"Error al obtener audio: {e}")
-        return jsonify({"error": f"Error del servidor: {str(e)}"}), 500
+        elapsed_time = time.time() - start_time
+        print(f"💥 Error crítico al obtener audio: {e}")
+        return jsonify({
+            "error": f"Error del servidor: {str(e)}",
+            "extraction_time": round(elapsed_time, 2)
+        }), 500
+
+def get_fallback_audio_url(video_url):
+    """Método de extracción alternativo con configuración diferente"""
+    try:
+        print("🛠️  Configurando extractor alternativo...")
+        
+        # Configuración más permisiva
+        ydl_opts = {
+            'format': 'worst[ext=mp4]/worst',  # Formato más básico
+            'quiet': True,
+            'noplaylist': True,
+            'nocheckcertificate': True,
+            'prefer_insecure': True,
+            'no_warnings': True,
+            'socket_timeout': 60,
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Mobile/15E148 Safari/604.1',
+                'Accept': '*/*',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'identity',  # Sin compresión
+                'Connection': 'keep-alive',
+            },
+            'extract_flat': False,
+            'ignoreerrors': True,
+            'geo_bypass': True,
+            'geo_bypass_country': 'MX',  # Cambiar país
+            'retries': 10,
+            'fragment_retries': 10,
+            'youtube_include_dash_manifest': False,
+            'youtube_include_hls_manifest': False,
+        }
+        
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(video_url, download=False)
+            
+            if info and info.get('formats'):
+                # Buscar cualquier formato con audio
+                for fmt in info['formats']:
+                    url = fmt.get('url')
+                    if url and fmt.get('acodec') != 'none':
+                        print(f"✓ Formato alternativo encontrado: {fmt.get('ext')}")
+                        return url
+        
+        return None
+        
+    except Exception as e:
+        print(f"❌ Error en método alternativo: {e}")
+        return None
+
+def get_emergency_audio_url(video_url):
+    """Método de emergencia con configuración mínima"""
+    try:
+        print("🚨 Activando método de emergencia...")
+        
+        # Configuración ultra básica
+        ydl_opts = {
+            'format': '18',  # Formato estándar MP4
+            'quiet': True,
+            'noplaylist': True,
+            'nocheckcertificate': True,
+            'no_warnings': True,
+            'socket_timeout': 30,
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+                'Accept': '*/*'
+            },
+            'ignoreerrors': True,
+            'retries': 3,
+        }
+        
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(video_url, download=False)
+            
+            if info and info.get('url'):
+                print("✓ URL de emergencia obtenida")
+                return info.get('url')
+            elif info and info.get('formats'):
+                # Tomar el primer formato disponible
+                for fmt in info['formats']:
+                    if fmt.get('url'):
+                        print(f"✓ Formato de emergencia: {fmt.get('ext', 'unknown')}")
+                        return fmt.get('url')
+        
+        return None
+        
+    except Exception as e:
+        print(f"❌ Error en método de emergencia: {e}")
+        return None
 
 def search_songs_stealth(search_term, max_results=15):
     """Búsqueda con máximo sigilo y anti-detección"""
@@ -487,31 +623,205 @@ def search_single_variation_stealth(variation, results_per_variation=10):
 
 @lru_cache(maxsize=50)
 def get_direct_audio_url_stealth(video_url):
-    """Obtener URL directo del audio con máximo sigilo"""
-    ydl_opts = stealth_system.get_ydl_opts_stealth('bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio')
+    """Obtener URL directo del audio con múltiples estrategias anti-detección"""
+    
+    # Estrategias múltiples de extracción
+    strategies = [
+        'bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio',
+        'bestaudio/best[height<=480]',
+        'worst[ext=webm]/worst[ext=m4a]/worst',
+        '18/worst'  # Formato de respaldo
+    ]
+    
+    for i, format_selector in enumerate(strategies):
+        try:
+            print(f"🔄 Intentando estrategia {i+1}/{len(strategies)}: {format_selector}")
+            
+            # Configuraciones específicas por estrategia
+            ydl_opts = get_enhanced_ydl_opts(format_selector, attempt=i+1)
+            
+            # Delay adicional entre intentos
+            if i > 0:
+                delay = random.uniform(2, 5)
+                print(f"⏱️  Esperando {delay:.1f}s antes del siguiente intento...")
+                time.sleep(delay)
+                
+                # Actividad Spotify durante reintento
+                threading.Thread(
+                    target=spotify_system.simulate_user_behavior,
+                    daemon=True
+                ).start()
+            
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                print(f"🎯 Extrayendo info de: {video_url}")
+                info = ydl.extract_info(video_url, download=False)
+                
+                if not info:
+                    print(f"❌ No se obtuvo info en estrategia {i+1}")
+                    continue
+                
+                # Buscar formato de audio válido
+                audio_url = extract_best_audio_format(info, strategy_num=i+1)
+                if audio_url:
+                    print(f"✅ URL de audio obtenida con estrategia {i+1}")
+                    return audio_url
+                else:
+                    print(f"❌ No se encontró formato válido en estrategia {i+1}")
+                    
+        except Exception as e:
+            print(f"❌ Error en estrategia {i+1}: {str(e)}")
+            continue
+    
+    print("💀 Todas las estrategias fallaron")
+    return None
 
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(video_url, download=False)
-            
-            if not info or not info.get('formats'):
-                return None
-            
-            formats = info.get('formats', [])
-            
-            for fmt in formats:
-                if (fmt.get('acodec') and fmt.get('acodec') != 'none' and 
+def get_enhanced_ydl_opts(format_selector, attempt=1):
+    """Configuraciones yt-dlp mejoradas según el intento"""
+    
+    # Headers más agresivos según el intento
+    base_headers = stealth_system.get_stealth_headers()
+    
+    if attempt == 1:
+        # Primera estrategia: Navegador Chrome estándar
+        additional_headers = {
+            'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+            'Sec-Ch-Ua-Mobile': '?0',
+            'Sec-Ch-Ua-Platform': '"Windows"',
+            'Sec-Fetch-User': '?1',
+        }
+    elif attempt == 2:
+        # Segunda estrategia: Firefox con diferentes headers
+        additional_headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'es-ES,es;q=0.8,en-US;q=0.5,en;q=0.3',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none'
+        }
+    elif attempt == 3:
+        # Tercera estrategia: Móvil Android
+        additional_headers = {
+            'User-Agent': 'Mozilla/5.0 (Linux; Android 10; SM-G975F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+            'Sec-Ch-Ua-Mobile': '?1',
+        }
+    else:
+        # Cuarta estrategia: iPad
+        additional_headers = {
+            'User-Agent': 'Mozilla/5.0 (iPad; CPU OS 17_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Mobile/15E148 Safari/604.1',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        }
+    
+    # Combinar headers
+    final_headers = {**base_headers, **additional_headers}
+    
+    # Configuraciones específicas por intento
+    opts = {
+        'format': format_selector,
+        'quiet': False if attempt == 1 else True,  # Verbose en primer intento
+        'noplaylist': True,
+        'nocheckcertificate': True,
+        'prefer_insecure': True,
+        'no_warnings': attempt > 1,
+        'socket_timeout': 45,
+        'http_headers': final_headers,
+        'extract_flat': False,  # Extracción completa
+        'ignoreerrors': True,
+        'geo_bypass': True,
+        'geo_bypass_country': ['US', 'GB', 'CA'][attempt % 3],  # Rotar países
+        'age_limit': 999,
+        'sleep_interval': random.uniform(1, 3),
+        'max_sleep_interval': 5,
+        'retries': 5,
+        'fragment_retries': 5,
+        'file_access_retries': 5,
+        # Configuraciones anti-throttling
+        'throttled_rate': None,
+        'ratelimit': None,
+        # Configuraciones de extractor específicas
+        'youtube_include_dash_manifest': False,
+        'youtube_include_hls_manifest': False,
+    }
+    
+    # Proxy si está disponible y es un reintento
+    if attempt > 1:
+        proxy = stealth_system.get_random_proxy()
+        if proxy:
+            opts['proxy'] = proxy
+    
+    return opts
+
+def extract_best_audio_format(info, strategy_num=1):
+    """Extraer el mejor formato de audio disponible"""
+    
+    if not info.get('formats'):
+        print(f"❌ No hay formatos disponibles")
+        return None
+    
+    formats = info.get('formats', [])
+    print(f"📊 {len(formats)} formatos encontrados")
+    
+    # Prioridades de formato según estrategia
+    if strategy_num == 1:
+        # Mejor calidad de audio
+        preferred_codecs = ['opus', 'aac', 'mp3', 'vorbis']
+        preferred_exts = ['webm', 'm4a', 'mp4', 'mp3']
+    elif strategy_num == 2:
+        # Compatibilidad universal
+        preferred_codecs = ['aac', 'mp3', 'opus']
+        preferred_exts = ['m4a', 'mp4', 'mp3', 'webm']
+    elif strategy_num == 3:
+        # Formato más básico
+        preferred_codecs = ['aac', 'mp3']
+        preferred_exts = ['mp4', 'm4a', 'mp3']
+    else:
+        # Cualquier formato que funcione
+        preferred_codecs = ['aac', 'mp3', 'opus', 'vorbis']
+        preferred_exts = ['mp4', 'm4a', 'mp3', 'webm']
+    
+    # Filtrar formatos solo de audio
+    audio_formats = []
+    for fmt in formats:
+        if (fmt.get('acodec') and fmt.get('acodec') != 'none' and
+            fmt.get('url') and 
+            (not fmt.get('vcodec') or fmt.get('vcodec') == 'none')):
+            audio_formats.append(fmt)
+    
+    print(f"🎵 {len(audio_formats)} formatos de audio encontrados")
+    
+    if not audio_formats:
+        # Si no hay formatos solo de audio, buscar video con audio
+        print("🔄 Buscando formatos de video con audio...")
+        for fmt in formats:
+            if (fmt.get('acodec') and fmt.get('acodec') != 'none' and
+                fmt.get('url') and
+                fmt.get('ext') in preferred_exts):
+                print(f"✓ Formato encontrado: {fmt.get('ext')} - {fmt.get('acodec')}")
+                return fmt.get('url')
+    
+    # Buscar mejor formato de audio
+    for codec in preferred_codecs:
+        for ext in preferred_exts:
+            for fmt in audio_formats:
+                if (codec in fmt.get('acodec', '').lower() and
+                    fmt.get('ext') == ext and
                     fmt.get('url') and
-                    fmt.get('ext') in ['webm', 'm4a', 'mp4'] and
                     not fmt.get('url').startswith('https://manifest')):
                     
+                    print(f"✓ Formato seleccionado: {ext} - {codec}")
                     return fmt.get('url')
-            
-            return None
-            
-    except Exception as e:
-        print(f"Error obteniendo URL de audio con sigilo: {e}")
-        return None
+    
+    # Fallback: cualquier formato de audio válido
+    for fmt in audio_formats:
+        if (fmt.get('url') and 
+            not fmt.get('url').startswith('https://manifest')):
+            print(f"✓ Formato fallback: {fmt.get('ext')} - {fmt.get('acodec')}")
+            return fmt.get('url')
+    
+    print("❌ No se encontró ningún formato de audio válido")
+    return None
 
 # Funciones auxiliares (mantenidas del código original)
 def get_cache_key(search_term):
