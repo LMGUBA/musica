@@ -9,13 +9,20 @@ import concurrent.futures
 import threading
 from functools import lru_cache
 import requests
+import base64
 
 app = Flask(__name__)
 
 # Deshabilitar verificación SSL globalmente
 ssl._create_default_https_context = ssl._create_unverified_context
 
-# Sistema anti-detección mejorado
+# Configuración de credenciales de Spotify
+SPOTIFY_CONFIG = {
+    'client_id': 'c508ae6a444f4d16877ba4dcecbba1ab',
+    'client_secret': '66c896d517ec497dad0d59f00fed258c'
+}
+
+# Sistema anti-detección mejorado con Spotify integrado
 class YouTubeStealthSystem:
     def __init__(self):
         self.user_agents = [
@@ -110,33 +117,203 @@ search_cache = {}
 cache_lock = threading.Lock()
 CACHE_EXPIRY = 300  # 5 minutos
 
-# Simulador de actividad de Spotify (señuelo)
-class SpotifyDecoy:
+# Sistema de autenticación y actividad de Spotify (mejorado)
+class SpotifyAntiDetection:
     def __init__(self):
-        self.spotify_endpoints = [
-            'https://api.spotify.com/v1/search',
-            'https://api.spotify.com/v1/tracks',
-            'https://api.spotify.com/v1/playlists'
+        self.client_id = SPOTIFY_CONFIG['client_id']
+        self.client_secret = SPOTIFY_CONFIG['client_secret']
+        self.access_token = None
+        self.token_expires_at = 0
+        self.search_terms_used = []
+        
+        # Géneros y artistas populares para búsquedas realistas
+        self.popular_searches = [
+            "reggaeton 2024", "bad bunny", "taylor swift", "pop latino",
+            "rock en español", "salsa", "bachata", "merengue", "cumbia",
+            "indie rock", "electronic", "hip hop", "r&b", "jazz",
+            "classical", "country", "folk", "blues", "reggae",
+            "metal", "punk", "alternative", "house", "techno"
+        ]
+        
+        # Playlists populares para simular actividad real
+        self.popular_playlists = [
+            "Today's Top Hits", "RapCaviar", "Hot Country", "Rock This",
+            "Viva Latino", "Peaceful Piano", "Deep Focus", "Chill Hits",
+            "Pop Rising", "Indie Pop", "Electronic Focus", "Jazz Vibes"
         ]
     
-    def make_decoy_request(self):
-        """Hacer request falso a Spotify para confundir tracking"""
+    def get_access_token(self):
+        """Obtener token de acceso real de Spotify"""
+        if self.access_token and time.time() < self.token_expires_at:
+            return self.access_token
+        
         try:
-            endpoint = random.choice(self.spotify_endpoints)
-            headers = stealth_system.get_stealth_headers()
+            # Codificar credenciales
+            credentials = base64.b64encode(
+                f"{self.client_id}:{self.client_secret}".encode()
+            ).decode()
             
-            # Request que fallará pero generará tráfico legítimo
-            requests.get(endpoint, headers=headers, timeout=5)
-        except:
-            pass  # Ignorar errores, es solo un señuelo
+            headers = {
+                'Authorization': f'Basic {credentials}',
+                'Content-Type': 'application/x-www-form-urlencoded'
+            }
+            
+            data = {'grant_type': 'client_credentials'}
+            
+            response = requests.post(
+                'https://accounts.spotify.com/api/token',
+                headers=headers,
+                data=data,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                token_data = response.json()
+                self.access_token = token_data['access_token']
+                # Token expira en 1 hora, renovamos 5 min antes
+                self.token_expires_at = time.time() + token_data['expires_in'] - 300
+                print("✓ Token de Spotify obtenido exitosamente")
+                return self.access_token
+            else:
+                print(f"✗ Error obteniendo token de Spotify: {response.status_code}")
+                return None
+        except Exception as e:
+            print(f"✗ Error de autenticación Spotify: {e}")
+            return None
+    
+    def make_realistic_spotify_search(self, original_query=None):
+        """Hacer búsqueda real en Spotify para generar tráfico legítimo"""
+        token = self.get_access_token()
+        if not token:
+            return False
+        
+        try:
+            # Elegir término de búsqueda realista
+            if original_query and random.random() < 0.3:  # 30% usar query original
+                search_term = original_query
+            else:
+                search_term = random.choice(self.popular_searches)
+            
+            # Evitar repetir búsquedas muy seguido
+            if search_term in self.search_terms_used[-5:]:
+                search_term = random.choice(self.popular_searches)
+            
+            self.search_terms_used.append(search_term)
+            if len(self.search_terms_used) > 20:
+                self.search_terms_used.pop(0)
+            
+            headers = {
+                'Authorization': f'Bearer {token}',
+                'Content-Type': 'application/json',
+                **stealth_system.get_stealth_headers()
+            }
+            
+            # Búsqueda real en Spotify
+            search_url = 'https://api.spotify.com/v1/search'
+            params = {
+                'q': search_term,
+                'type': 'track,artist,album',
+                'limit': random.randint(10, 50),
+                'market': 'US'
+            }
+            
+            response = requests.get(
+                search_url,
+                headers=headers,
+                params=params,
+                timeout=15
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                tracks_found = len(data.get('tracks', {}).get('items', []))
+                print(f"✓ Búsqueda Spotify exitosa: '{search_term}' ({tracks_found} tracks)")
+                return True
+            else:
+                print(f"✗ Error en búsqueda Spotify: {response.status_code}")
+                return False
+                
+        except Exception as e:
+            print(f"✗ Error en búsqueda Spotify: {e}")
+            return False
+    
+    def get_playlist_tracks(self):
+        """Obtener tracks de playlist popular para simular navegación"""
+        token = self.get_access_token()
+        if not token:
+            return False
+        
+        try:
+            headers = {
+                'Authorization': f'Bearer {token}',
+                **stealth_system.get_stealth_headers()
+            }
+            
+            # Buscar playlist por nombre
+            playlist_name = random.choice(self.popular_playlists)
+            search_url = 'https://api.spotify.com/v1/search'
+            params = {
+                'q': playlist_name,
+                'type': 'playlist',
+                'limit': 1
+            }
+            
+            response = requests.get(search_url, headers=headers, params=params, timeout=10)
+            
+            if response.status_code == 200:
+                playlists = response.json().get('playlists', {}).get('items', [])
+                if playlists:
+                    playlist_id = playlists[0]['id']
+                    
+                    # Obtener tracks de la playlist
+                    tracks_url = f'https://api.spotify.com/v1/playlists/{playlist_id}/tracks'
+                    tracks_response = requests.get(tracks_url, headers=headers, timeout=10)
+                    
+                    if tracks_response.status_code == 200:
+                        print(f"✓ Playlist Spotify accedida: '{playlist_name}'")
+                        return True
+            
+            return False
+        except Exception as e:
+            print(f"✗ Error accediendo playlist: {e}")
+            return False
+    
+    def simulate_user_behavior(self, original_query=None):
+        """Simular comportamiento real de usuario de Spotify"""
+        actions = [
+            ('search', 0.6),  # 60% probabilidad de búsqueda
+            ('playlist', 0.3),  # 30% probabilidad de playlist
+            ('wait', 0.1)  # 10% probabilidad de solo esperar
+        ]
+        
+        # Seleccionar acción basada en probabilidades
+        rand = random.random()
+        cumulative_prob = 0
+        
+        for action, prob in actions:
+            cumulative_prob += prob
+            if rand <= cumulative_prob:
+                if action == 'search':
+                    return self.make_realistic_spotify_search(original_query)
+                elif action == 'playlist':
+                    return self.get_playlist_tracks()
+                else:  # wait
+                    time.sleep(random.uniform(1, 3))
+                    return True
+        
+        return False
 
-spotify_decoy = SpotifyDecoy()
+# Instancia del sistema anti-detección Spotify
+spotify_system = SpotifyAntiDetection()
 
 @app.route("/", methods=["GET", "POST"])
 def index():
-    # Hacer request señuelo ocasionalmente
-    if random.random() < 0.3:  # 30% de probabilidad
-        threading.Thread(target=spotify_decoy.make_decoy_request, daemon=True).start()
+    # Actividad Spotify realista en background
+    if random.random() < 0.4:  # 40% de probabilidad
+        threading.Thread(
+            target=spotify_system.simulate_user_behavior,
+            daemon=True
+        ).start()
     
     if request.method == "POST":
         query = request.form.get("query", "").strip()
@@ -147,6 +324,13 @@ def index():
         try:
             # Aplicar delay anti-detección
             stealth_system.apply_request_delay()
+            
+            # Actividad Spotify con query original
+            threading.Thread(
+                target=spotify_system.simulate_user_behavior,
+                args=(query,),
+                daemon=True
+            ).start()
             
             # Buscar canciones con sigilo
             search_results = search_songs_stealth(query)
@@ -168,9 +352,12 @@ def index():
 def get_audio_url():
     """Obtener URL de audio directo con máximo sigilo"""
     try:
-        # Request señuelo
-        if random.random() < 0.5:
-            threading.Thread(target=spotify_decoy.make_decoy_request, daemon=True).start()
+        # Actividad Spotify intensiva durante descarga
+        if random.random() < 0.7:  # 70% probabilidad
+            threading.Thread(
+                target=spotify_system.simulate_user_behavior,
+                daemon=True
+            ).start()
         
         data = request.get_json()
         if not data:
@@ -182,6 +369,12 @@ def get_audio_url():
         
         # Aplicar delay anti-detección
         stealth_system.apply_request_delay()
+        
+        # Actividad Spotify adicional
+        threading.Thread(
+            target=spotify_system.get_playlist_tracks,
+            daemon=True
+        ).start()
         
         print(f"Obteniendo audio con sigilo para: {video_url}")
         audio_url = get_direct_audio_url_stealth(video_url)
@@ -208,18 +401,28 @@ def search_songs_stealth(search_term, max_results=15):
     print(f"Búsqueda sigilosa para: {search_term}")
     start_time = time.time()
     
+    # Actividad Spotify durante búsqueda
+    threading.Thread(
+        target=spotify_system.make_realistic_spotify_search,
+        args=(search_term,),
+        daemon=True
+    ).start()
+    
     search_variations = generate_search_variations_optimized(search_term)
     all_results = []
     
     # Búsquedas secuenciales con delays para evitar detección
-    for variation in search_variations:
+    for i, variation in enumerate(search_variations):
         try:
             # Aplicar delay entre variaciones
             stealth_system.apply_request_delay()
             
-            # Request señuelo ocasional
-            if random.random() < 0.4:
-                threading.Thread(target=spotify_decoy.make_decoy_request, daemon=True).start()
+            # Actividad Spotify entre variaciones
+            if i > 0 and random.random() < 0.5:
+                threading.Thread(
+                    target=spotify_system.simulate_user_behavior,
+                    daemon=True
+                ).start()
             
             results = search_single_variation_stealth(variation, max_results // len(search_variations) + 3)
             all_results.extend(results)
@@ -410,13 +613,27 @@ def internal_error(error):
     return render_template('index.html', error="Error interno del servidor"), 500
 
 if __name__ == "__main__":
-    print("Iniciando servidor Flask con sistema anti-detección...")
-    print("Accede a: http://localhost:8080")
-    print("Características de sigilo activadas:")
-    print("- Rotación de User-Agents")
-    print("- Delays aleatorios entre requests")
-    print("- Headers de navegador real")
-    print("- Requests señuelo a Spotify")
-    print("- Geo-bypass activado")
-    print("- Cache de búsquedas (5 min)")
+    print("🚀 Iniciando servidor Flask con sistema anti-detección avanzado...")
+    print("🎵 Integrando autenticación real de Spotify...")
+    
+    # Probar autenticación Spotify al inicio
+    if spotify_system.get_access_token():
+        print("✅ Spotify integrado exitosamente")
+    else:
+        print("⚠️  Advertencia: No se pudo autenticar con Spotify")
+    
+    print("\n🔒 Características de sigilo activadas:")
+    print("   - Rotación de User-Agents")
+    print("   - Delays aleatorios entre requests")
+    print("   - Headers de navegador real")
+    print("   - Búsquedas REALES en Spotify API")
+    print("   - Navegación de playlists Spotify")
+    print("   - Simulación de comportamiento de usuario")
+    print("   - Geo-bypass activado")
+    print("   - Cache de búsquedas (5 min)")
+    print("   - Token de autenticación Spotify renovable")
+    
+    print(f"\n🌐 Accede a: http://localhost:8080")
+    print("🎯 Sistema de camuflaje Spotify activo")
+    
     app.run(debug=True, host='0.0.0.0', port=8080, threaded=True)
